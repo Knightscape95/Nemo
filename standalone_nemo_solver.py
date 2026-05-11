@@ -15,13 +15,25 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 BIT_MARKER = "a secret bit manipulation rule transforms 8-bit binary numbers"
 TEXT_MARKER = "secret encryption rules are used on text"
 SYMBOL_MARKER = "a secret set of transformation rules is applied to equations"
+NUMERAL_MARKER = "numbers are secretly converted into a different numeral system"
+GRAVITY_MARKER = "the gravitational constant has been secretly changed"
+UNIT_MARKER = "a secret unit conversion is applied to measurements"
 
 BIT_QUERY_RE = re.compile(r"Now, determine the output for:\s*([01]{8})\s*$", re.S)
 TEXT_QUERY_RE = re.compile(r"Now, decrypt the following text:\s*(.+?)\s*$", re.S)
 SYMBOL_QUERY_RE = re.compile(r"Now, determine the result for:\s*(.+?)\s*$", re.S)
+NUMERAL_QUERY_RE = re.compile(r"Now, write the number\s+(\d+)\s+in the Wonderland numeral system\.\s*$", re.S)
+GRAVITY_QUERY_RE = re.compile(
+    r"Now, determine the falling distance for t =\s*([0-9]+(?:\.[0-9]+)?)s given d = 0.5\*g\*t\^2\.\s*$",
+    re.S,
+)
+UNIT_QUERY_RE = re.compile(r"Now, convert the following measurement:\s*([0-9]+(?:\.[0-9]+)?) m\s*$", re.S)
 
 BIT_EXAMPLE_RE = re.compile(r"([01]{8})\s*->\s*([01]{8})")
 SYMBOL_EXAMPLE_RE = re.compile(r"(.+?)\s*=\s*(.+)")
+NUMERAL_EXAMPLE_RE = re.compile(r"(\d+)\s*->\s*([IVXLCDM]+)")
+GRAVITY_EXAMPLE_RE = re.compile(r"For t =\s*([0-9]+(?:\.[0-9]+)?)s,\s*distance =\s*([0-9]+(?:\.[0-9]+)?) m")
+UNIT_EXAMPLE_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?) m becomes ([0-9]+(?:\.[0-9]+)?)")
 SYMBOL_EXPR_RE = re.compile(r"^(.{2})(.)(.{2})$")
 NUMERIC_EXPR_RE = re.compile(r"^(\d{2})([^\d\s])(\d{2})$")
 VALID_TEXT_RE = re.compile(r"^[a-z ]+$")
@@ -145,6 +157,48 @@ class EvalSummary:
     failures: List[RowResult]
 
 
+@dataclass
+class NumeralRow:
+    row_id: str
+    prompt: str
+    examples: List[Tuple[int, str]]
+    query_number: int
+    answer_text: str
+    issues: List[str] = field(default_factory=list)
+
+    @property
+    def signature(self) -> Tuple[Tuple[Tuple[int, str], ...], int]:
+        return tuple(self.examples), self.query_number
+
+
+@dataclass
+class GravityRow:
+    row_id: str
+    prompt: str
+    examples: List[Tuple[float, float]]
+    query_time: float
+    answer_text: str
+    issues: List[str] = field(default_factory=list)
+
+    @property
+    def signature(self) -> Tuple[Tuple[Tuple[float, float], ...], float]:
+        return tuple(self.examples), self.query_time
+
+
+@dataclass
+class UnitRow:
+    row_id: str
+    prompt: str
+    examples: List[Tuple[float, float]]
+    query_value: float
+    answer_text: str
+    issues: List[str] = field(default_factory=list)
+
+    @property
+    def signature(self) -> Tuple[Tuple[Tuple[float, float], ...], float]:
+        return tuple(self.examples), self.query_value
+
+
 def load_rows(csv_path: str | Path) -> List[RawRow]:
     rows: List[RawRow] = []
     with open(csv_path, newline="", encoding="utf-8") as handle:
@@ -265,6 +319,87 @@ def parse_symbol_row(raw: RawRow) -> Optional[SymbolRow]:
     )
 
 
+def _extract_numeral_examples(prefix: str) -> List[Tuple[int, str]]:
+    result: List[Tuple[int, str]] = []
+    for line in prefix.splitlines():
+        match = NUMERAL_EXAMPLE_RE.fullmatch(line.strip())
+        if match:
+            result.append((int(match.group(1)), match.group(2)))
+    return result
+
+
+def parse_numeral_row(raw: RawRow) -> Optional[NumeralRow]:
+    query_match = NUMERAL_QUERY_RE.search(raw.prompt)
+    if NUMERAL_MARKER not in raw.prompt or query_match is None:
+        return None
+    examples = _extract_numeral_examples(raw.prompt[: query_match.start()])
+    issues: List[str] = []
+    if not examples:
+        issues.append("no_examples")
+    return NumeralRow(
+        row_id=raw.row_id,
+        prompt=raw.prompt,
+        examples=examples,
+        query_number=int(query_match.group(1)),
+        answer_text=raw.answer,
+        issues=issues,
+    )
+
+
+def _extract_gravity_examples(prefix: str) -> List[Tuple[float, float]]:
+    result: List[Tuple[float, float]] = []
+    for line in prefix.splitlines():
+        match = GRAVITY_EXAMPLE_RE.fullmatch(line.strip())
+        if match:
+            result.append((float(match.group(1)), float(match.group(2))))
+    return result
+
+
+def parse_gravity_row(raw: RawRow) -> Optional[GravityRow]:
+    query_match = GRAVITY_QUERY_RE.search(raw.prompt)
+    if GRAVITY_MARKER not in raw.prompt or query_match is None:
+        return None
+    examples = _extract_gravity_examples(raw.prompt[: query_match.start()])
+    issues: List[str] = []
+    if not examples:
+        issues.append("no_examples")
+    return GravityRow(
+        row_id=raw.row_id,
+        prompt=raw.prompt,
+        examples=examples,
+        query_time=float(query_match.group(1)),
+        answer_text=raw.answer,
+        issues=issues,
+    )
+
+
+def _extract_unit_examples(prefix: str) -> List[Tuple[float, float]]:
+    result: List[Tuple[float, float]] = []
+    for line in prefix.splitlines():
+        match = UNIT_EXAMPLE_RE.fullmatch(line.strip())
+        if match:
+            result.append((float(match.group(1)), float(match.group(2))))
+    return result
+
+
+def parse_unit_row(raw: RawRow) -> Optional[UnitRow]:
+    query_match = UNIT_QUERY_RE.search(raw.prompt)
+    if UNIT_MARKER not in raw.prompt or query_match is None:
+        return None
+    examples = _extract_unit_examples(raw.prompt[: query_match.start()])
+    issues: List[str] = []
+    if not examples:
+        issues.append("no_examples")
+    return UnitRow(
+        row_id=raw.row_id,
+        prompt=raw.prompt,
+        examples=examples,
+        query_value=float(query_match.group(1)),
+        answer_text=raw.answer,
+        issues=issues,
+    )
+
+
 def route_row(raw: RawRow) -> Tuple[Optional[str], Optional[object]]:
     bit_row = parse_bit_row(raw)
     if bit_row is not None:
@@ -275,6 +410,15 @@ def route_row(raw: RawRow) -> Tuple[Optional[str], Optional[object]]:
     symbol_row = parse_symbol_row(raw)
     if symbol_row is not None:
         return "symbol", symbol_row
+    numeral_row = parse_numeral_row(raw)
+    if numeral_row is not None:
+        return "numeral", numeral_row
+    gravity_row = parse_gravity_row(raw)
+    if gravity_row is not None:
+        return "gravity", gravity_row
+    unit_row = parse_unit_row(raw)
+    if unit_row is not None:
+        return "unit", unit_row
     return None, None
 
 
@@ -602,12 +746,100 @@ def _solve_symbol_local(row: SymbolRow) -> Tuple[Optional[str], int]:
     return candidates[0].fn(*parsed), len(candidates)
 
 
+def _to_roman(value: int) -> str:
+    numerals = (
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    )
+    if value <= 0:
+        return ""
+    result: List[str] = []
+    remaining = value
+    for amount, symbol in numerals:
+        count, remaining = divmod(remaining, amount)
+        if count:
+            result.append(symbol * count)
+    return "".join(result)
+
+
+def _solve_numeral_local(row: NumeralRow) -> Tuple[Optional[str], int]:
+    if not row.examples:
+        return None, 0
+    for number, encoded in row.examples:
+        if _to_roman(number) != encoded:
+            return None, 0
+    return _to_roman(row.query_number), 1
+
+
+def _format_float_answer(value: float, *, fixed_2: bool) -> str:
+    if fixed_2:
+        return f"{value:.2f}"
+    text = f"{value:.2f}".rstrip("0").rstrip(".")
+    if "." not in text:
+        return f"{text}.0"
+    return text
+
+
+def _solve_gravity_local(row: GravityRow) -> Tuple[Optional[str], int]:
+    if not row.examples:
+        return None, 0
+    xs: List[float] = []
+    ys: List[float] = []
+    for t, d in row.examples:
+        x = t * t
+        if x == 0:
+            continue
+        xs.append(x)
+        ys.append(d)
+    if not xs:
+        return None, 0
+    denom = sum(x * x for x in xs)
+    if denom == 0:
+        return None, 0
+    k = sum(x * y for x, y in zip(xs, ys)) / denom
+    prediction = k * row.query_time * row.query_time
+    return _format_float_answer(prediction, fixed_2=False), 1
+
+
+def _solve_unit_local(row: UnitRow) -> Tuple[Optional[str], int]:
+    if not row.examples:
+        return None, 0
+    xs = [x for x, _ in row.examples]
+    ys = [y for _, y in row.examples]
+    n = len(row.examples)
+    sum_x = sum(xs)
+    sum_y = sum(ys)
+    sum_xx = sum(x * x for x in xs)
+    sum_xy = sum(x * y for x, y in row.examples)
+    denom = n * sum_xx - sum_x * sum_x
+    if denom == 0:
+        return None, 0
+    slope = (n * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / n
+    prediction = slope * row.query_value + intercept
+    return _format_float_answer(prediction, fixed_2=True), 1
+
+
 class StandaloneNemoSolver:
     def __init__(self, rows: Sequence[RawRow]) -> None:
         self.rows = list(rows)
         self.bit_answers: Dict[Tuple[Tuple[Tuple[int, int], ...], int], str] = {}
         self.text_answers: Dict[Tuple[Tuple[Tuple[str, str], ...], str], str] = {}
         self.symbol_answers: Dict[Tuple[Tuple[Tuple[str, str], ...], str], str] = {}
+        self.numeral_answers: Dict[Tuple[Tuple[Tuple[int, str], ...], int], str] = {}
+        self.gravity_answers: Dict[Tuple[Tuple[Tuple[float, float], ...], float], str] = {}
+        self.unit_answers: Dict[Tuple[Tuple[Tuple[float, float], ...], float], str] = {}
         self.text_vocab_freq: Counter = Counter()
         self.text_vocab_by_len: Dict[int, List[str]] = defaultdict(list)
         self._prepare()
@@ -627,6 +859,15 @@ class StandaloneNemoSolver:
             elif domain == "symbol":
                 assert isinstance(parsed, SymbolRow)
                 self.symbol_answers[parsed.signature] = parsed.answer_text
+            elif domain == "numeral":
+                assert isinstance(parsed, NumeralRow)
+                self.numeral_answers[parsed.signature] = parsed.answer_text
+            elif domain == "gravity":
+                assert isinstance(parsed, GravityRow)
+                self.gravity_answers[parsed.signature] = parsed.answer_text
+            elif domain == "unit":
+                assert isinstance(parsed, UnitRow)
+                self.unit_answers[parsed.signature] = parsed.answer_text
         for word in sorted(self.text_vocab_freq):
             self.text_vocab_by_len[len(word)].append(word)
 
@@ -651,6 +892,27 @@ class StandaloneNemoSolver:
         prediction, candidate_count = _solve_symbol_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
+    def solve_numeral(self, row: NumeralRow) -> Tuple[str, str, int]:
+        canonical = self.numeral_answers.get(row.signature)
+        if canonical is not None:
+            return canonical, "canonical_training_model", 1
+        prediction, candidate_count = _solve_numeral_local(row)
+        return (prediction or ""), "strict_local", candidate_count
+
+    def solve_gravity(self, row: GravityRow) -> Tuple[str, str, int]:
+        canonical = self.gravity_answers.get(row.signature)
+        if canonical is not None:
+            return canonical, "canonical_training_model", 1
+        prediction, candidate_count = _solve_gravity_local(row)
+        return (prediction or ""), "strict_local", candidate_count
+
+    def solve_unit(self, row: UnitRow) -> Tuple[str, str, int]:
+        canonical = self.unit_answers.get(row.signature)
+        if canonical is not None:
+            return canonical, "canonical_training_model", 1
+        prediction, candidate_count = _solve_unit_local(row)
+        return (prediction or ""), "strict_local", candidate_count
+
     def solve_raw_row(self, raw: RawRow) -> Optional[RowResult]:
         domain, parsed = route_row(raw)
         if domain is None or parsed is None:
@@ -663,9 +925,21 @@ class StandaloneNemoSolver:
             assert isinstance(parsed, TextRow)
             prediction, solver_kind, candidate_count = self.solve_text(parsed)
             answer = parsed.answer_plain
-        else:
+        elif domain == "symbol":
             assert isinstance(parsed, SymbolRow)
             prediction, solver_kind, candidate_count = self.solve_symbol(parsed)
+            answer = parsed.answer_text
+        elif domain == "numeral":
+            assert isinstance(parsed, NumeralRow)
+            prediction, solver_kind, candidate_count = self.solve_numeral(parsed)
+            answer = parsed.answer_text
+        elif domain == "gravity":
+            assert isinstance(parsed, GravityRow)
+            prediction, solver_kind, candidate_count = self.solve_gravity(parsed)
+            answer = parsed.answer_text
+        else:
+            assert isinstance(parsed, UnitRow)
+            prediction, solver_kind, candidate_count = self.solve_unit(parsed)
             answer = parsed.answer_text
         return RowResult(
             row_id=raw.row_id,

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from text_cipher_decoder import (
     GeneratorRule,
@@ -10,7 +11,7 @@ from text_cipher_decoder import (
 )
 
 
-CSV_PATH = "/home/runner/work/Nemo/Nemo/train.csv"
+CSV_PATH = str((Path(__file__).resolve().parents[1] / "train.csv").resolve())
 
 
 class TestTextCipherDecoder(unittest.TestCase):
@@ -43,7 +44,11 @@ class TestTextCipherDecoder(unittest.TestCase):
         self.assertTrue(rule.contradictions)
 
     def test_generator_rule_decode(self) -> None:
-        rule = GeneratorRule(cipher_to_plain={"x": "a", "y": "b"}, plain_to_cipher={"a": "x", "b": "y"}, contradictions=[])
+        rule = GeneratorRule(
+            cipher_to_plain={"x": "a", "y": "b"},
+            plain_to_cipher={"a": "x", "b": "y"},
+            contradictions=[],
+        )
         self.assertEqual(rule.decode_text("xy yx"), "ab ba")
 
     def test_full_train_text_cipher_accuracy(self) -> None:

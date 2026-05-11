@@ -1,7 +1,7 @@
 # Text Cipher Decoder Notes
 
 ## Scope
-- Dataset: `/home/runner/work/Nemo/Nemo/train.csv`
+- Dataset: `<repo-root>/train.csv` (default resolves to an absolute path at runtime)
 - Target rows: prompt contains `secret encryption rules are used on text` and has `Now, decrypt the following text:`.
 
 ## Generator reconstruction assumptions
@@ -26,8 +26,8 @@
 
 ## Usage
 ```bash
-python /home/runner/work/Nemo/Nemo/run_text_cipher_eval.py --csv /home/runner/work/Nemo/Nemo/train.csv
+python <repo-root>/run_text_cipher_eval.py --csv <repo-root>/train.csv
 ```
 
 JSON diagnostics report is written to:
-- `/home/runner/work/Nemo/Nemo/text_cipher_error_analysis.json`
+- `<repo-root>/text_cipher_error_analysis.json` (absolute path resolved by the script)

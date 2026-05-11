@@ -415,7 +415,7 @@ def evaluate_text_cipher_rows(rows: Sequence[TextCipherRow], sanity: Dict[str, i
                     "row_id": row.row_id,
                     "bucket": "inconsistent_mapping",
                     "prediction": prediction,
-                    "answer": row.answer_plain,
+                    "answer_plain": row.answer_plain,
                     "query_cipher": row.query_cipher,
                 }
             )
@@ -430,7 +430,7 @@ def evaluate_text_cipher_rows(rows: Sequence[TextCipherRow], sanity: Dict[str, i
                     "row_id": row.row_id,
                     "bucket": bucket,
                     "prediction": prediction,
-                    "answer": row.answer_plain,
+                    "answer_plain": row.answer_plain,
                     "query_cipher": row.query_cipher,
                 }
             )
@@ -489,24 +489,32 @@ def run_evaluation(csv_path: str | Path) -> EvalReport:
     return evaluate_text_cipher_rows(selected_rows, sanity)
 
 
+def _default_paths() -> Tuple[Path, Path]:
+    repo_root = Path(__file__).resolve().parent
+    csv_path = (repo_root / "train.csv").resolve()
+    report_path = (repo_root / "text_cipher_error_analysis.json").resolve()
+    return csv_path, report_path
+
+
 def main() -> int:
+    default_csv, default_report = _default_paths()
     parser = argparse.ArgumentParser(description="Decode and evaluate text-cipher rows from train.csv")
     parser.add_argument(
         "--csv",
-        default="/home/runner/work/Nemo/Nemo/train.csv",
-        help="Absolute path to CSV file",
+        default=str(default_csv),
+        help="CSV path (resolved to an absolute path)",
     )
     parser.add_argument(
         "--report-json",
-        default="/home/runner/work/Nemo/Nemo/text_cipher_error_analysis.json",
-        help="Absolute output path for full diagnostics JSON",
+        default=str(default_report),
+        help="Output JSON path for full diagnostics report",
     )
     args = parser.parse_args()
 
-    report = run_evaluation(args.csv)
+    report = run_evaluation(Path(args.csv).resolve())
 
     payload = report_to_json_dict(report)
-    output_path = Path(args.report_json)
+    output_path = Path(args.report_json).resolve()
     output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
     print(f"marker_count={report.marker_count}")

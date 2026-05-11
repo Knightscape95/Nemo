@@ -190,11 +190,42 @@ def _lcm(a: int, b: int) -> int:
     return abs(a * b) // math.gcd(a, b)
 
 
+def _char_or_empty(text: str, idx: int) -> str:
+    return text[idx] if 0 <= idx < len(text) else ""
+
+
+def _digit_dot_or_zero(a: str, b: str) -> int:
+    if len(a) < 2 or len(b) < 2:
+        return 0
+    return int(a[0]) * int(b[0]) + int(a[1]) * int(b[1])
+
+
 def _numeric_programs() -> List[ProgramSpec]:
     def mk(name: str, complexity: int, fn: Callable[[str, str, str], str]) -> ProgramSpec:
         return ProgramSpec(name=name, complexity=complexity, fn=fn)
 
     progs: List[ProgramSpec] = []
+
+    def make_plain(bf: Callable[[str, str], int]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: str(bf(a, b))
+
+    def make_zfill(bf: Callable[[str, str], int], width: int) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: str(bf(a, b)).zfill(width)
+
+    def make_prefix_op(bf: Callable[[str, str], int]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: f"{o}{bf(a, b)}"
+
+    def make_suffix_op(bf: Callable[[str, str], int]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: f"{bf(a, b)}{o}"
+
+    def make_raw(bf: Callable[[str, str], str]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: bf(a, b)
+
+    def make_raw_prefix_op(bf: Callable[[str, str], str]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: f"{o}{bf(a, b)}"
+
+    def make_raw_suffix_op(bf: Callable[[str, str], str]) -> Callable[[str, str, str], str]:
+        return lambda a, o, b: f"{bf(a, b)}{o}"
 
     def ai(a: str) -> int:
         return int(a)
@@ -217,16 +248,16 @@ def _numeric_programs() -> List[ProgramSpec]:
         ("concat_int", lambda a, b: int(a + b), 2),
         ("rconcat_int", lambda a, b: int(b + a), 2),
         ("sumdigits", lambda a, b: sum(map(int, a)) + sum(map(int, b)), 2),
-        ("digit_dot", lambda a, b: int(a[0]) * int(b[0]) + int(a[1]) * int(b[1]), 3),
+        ("digit_dot", lambda a, b: _digit_dot_or_zero(a, b), 3),
     ]
 
     for base_name, base_fn, base_complexity in int_funcs:
-        progs.append(mk(f"{base_name}_plain", base_complexity, lambda a, o, b, bf=base_fn: str(bf(a, b))))
-        progs.append(mk(f"{base_name}_z2", base_complexity + 1, lambda a, o, b, bf=base_fn: str(bf(a, b)).zfill(2)))
-        progs.append(mk(f"{base_name}_z3", base_complexity + 1, lambda a, o, b, bf=base_fn: str(bf(a, b)).zfill(3)))
-        progs.append(mk(f"{base_name}_z4", base_complexity + 1, lambda a, o, b, bf=base_fn: str(bf(a, b)).zfill(4)))
-        progs.append(mk(f"{base_name}_prefix_op", base_complexity + 2, lambda a, o, b, bf=base_fn: f"{o}{bf(a, b)}"))
-        progs.append(mk(f"{base_name}_suffix_op", base_complexity + 2, lambda a, o, b, bf=base_fn: f"{bf(a, b)}{o}"))
+        progs.append(mk(f"{base_name}_plain", base_complexity, make_plain(base_fn)))
+        progs.append(mk(f"{base_name}_z2", base_complexity + 1, make_zfill(base_fn, 2)))
+        progs.append(mk(f"{base_name}_z3", base_complexity + 1, make_zfill(base_fn, 3)))
+        progs.append(mk(f"{base_name}_z4", base_complexity + 1, make_zfill(base_fn, 4)))
+        progs.append(mk(f"{base_name}_prefix_op", base_complexity + 2, make_prefix_op(base_fn)))
+        progs.append(mk(f"{base_name}_suffix_op", base_complexity + 2, make_suffix_op(base_fn)))
 
     raw_funcs: List[Tuple[str, Callable[[str, str], str], int]] = [
         ("ab", lambda a, b: a + b, 1),
@@ -238,9 +269,9 @@ def _numeric_programs() -> List[ProgramSpec]:
     ]
 
     for base_name, base_fn, base_complexity in raw_funcs:
-        progs.append(mk(f"raw_{base_name}", base_complexity, lambda a, o, b, bf=base_fn: bf(a, b)))
-        progs.append(mk(f"raw_{base_name}_prefix_op", base_complexity + 1, lambda a, o, b, bf=base_fn: f"{o}{bf(a, b)}"))
-        progs.append(mk(f"raw_{base_name}_suffix_op", base_complexity + 1, lambda a, o, b, bf=base_fn: f"{bf(a, b)}{o}"))
+        progs.append(mk(f"raw_{base_name}", base_complexity, make_raw(base_fn)))
+        progs.append(mk(f"raw_{base_name}_prefix_op", base_complexity + 1, make_raw_prefix_op(base_fn)))
+        progs.append(mk(f"raw_{base_name}_suffix_op", base_complexity + 1, make_raw_suffix_op(base_fn)))
 
     progs.append(mk("op_only", 1, lambda a, o, b: o))
     progs.append(mk("op_plus_absdiff", 2, lambda a, o, b: f"{o}{abs(int(a)-int(b))}"))
@@ -265,12 +296,12 @@ def _string_programs() -> List[ProgramSpec]:
         mk("op_right", 2, lambda l, o, r: o + r),
         mk("op_left", 2, lambda l, o, r: o + l),
         mk("right_op", 2, lambda l, o, r: r + o),
-        mk("left0_right0", 2, lambda l, o, r: l[0] + r[0]),
-        mk("left1_right1", 2, lambda l, o, r: l[1] + r[1]),
-        mk("left0_right1", 2, lambda l, o, r: l[0] + r[1]),
-        mk("left1_right0", 2, lambda l, o, r: l[1] + r[0]),
-        mk("right0_left0", 2, lambda l, o, r: r[0] + l[0]),
-        mk("right1_left1", 2, lambda l, o, r: r[1] + l[1]),
+        mk("left0_right0", 2, lambda l, o, r: _char_or_empty(l, 0) + _char_or_empty(r, 0)),
+        mk("left1_right1", 2, lambda l, o, r: _char_or_empty(l, 1) + _char_or_empty(r, 1)),
+        mk("left0_right1", 2, lambda l, o, r: _char_or_empty(l, 0) + _char_or_empty(r, 1)),
+        mk("left1_right0", 2, lambda l, o, r: _char_or_empty(l, 1) + _char_or_empty(r, 0)),
+        mk("right0_left0", 2, lambda l, o, r: _char_or_empty(r, 0) + _char_or_empty(l, 0)),
+        mk("right1_left1", 2, lambda l, o, r: _char_or_empty(r, 1) + _char_or_empty(l, 1)),
         mk("left_rev_right", 3, lambda l, o, r: l[::-1] + r),
         mk("right_rev_left", 3, lambda l, o, r: r[::-1] + l),
         mk("left_right_rev", 3, lambda l, o, r: l + r[::-1]),
@@ -572,7 +603,7 @@ def run_evaluation(csv_path: str | Path, allow_answer_fallback: bool = True) -> 
 
 def _default_paths() -> Tuple[Path, Path]:
     repo_root = Path(__file__).resolve().parent
-    return (repo_root / "train.csv").resolve(), (repo_root / "symbol_transform_error_analysis.json").resolve()
+    return (repo_root / "train.csv").resolve(), (repo_root / "symbol_transform_diagnostics.json").resolve()
 
 
 def main() -> int:

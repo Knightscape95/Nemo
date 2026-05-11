@@ -422,7 +422,7 @@ def report_to_json_dict(report: EvalReport, profile: ProfileReport) -> Dict[str,
     unresolved_counts = Counter(d.unresolved_reason for d in report.diagnostics if d.unresolved_reason)
 
     times = sorted(d.solve_time_ms for d in report.diagnostics)
-    def pct(p: float) -> float:
+    def percentile(p: float) -> float:
         if not times:
             return 0.0
         idx = min(len(times) - 1, int(round((len(times) - 1) * p)))
@@ -440,8 +440,8 @@ def report_to_json_dict(report: EvalReport, profile: ProfileReport) -> Dict[str,
             "accuracy": report.accuracy,
             "fallback_count": fallback_count,
             "solve_time_ms": {
-                "p50": pct(0.50),
-                "p95": pct(0.95),
+                "p50": percentile(0.50),
+                "p95": percentile(0.95),
                 "max": max(times) if times else 0.0,
             },
         },
@@ -485,13 +485,13 @@ def run_evaluation(csv_path: str | Path, allow_answer_fallback: bool = True) -> 
     return report, profile
 
 
-def _default_paths() -> Tuple[Path, Path]:
+def _get_default_csv_and_report_paths() -> Tuple[Path, Path]:
     repo_root = Path(__file__).resolve().parent
     return (repo_root / "train.csv").resolve(), (repo_root / "bit_manipulation_diagnostics.json").resolve()
 
 
 def main() -> int:
-    default_csv, default_report = _default_paths()
+    default_csv, default_report = _get_default_csv_and_report_paths()
     parser = argparse.ArgumentParser(description="Decode and evaluate bit-manipulation rows from train.csv")
     parser.add_argument("--csv", default=str(default_csv), help="CSV path (absolute path is used)")
     parser.add_argument(

@@ -550,7 +550,7 @@ def _string_programs() -> List[ProgramSpec]:
         ("expr", 1, lambda left, op_char, right: left + op_char + right),
         ("expr_rev", 2, lambda left, op_char, right: (left + op_char + right)[::-1]),
     ]
-    for length in range(1, 5):
+    for length in range(1, 4):
         for indexes in itertools.product(range(5), repeat=length):
             name = "pick_" + "_".join(str(index) for index in indexes)
             base_sources.append(
@@ -560,10 +560,7 @@ def _string_programs() -> List[ProgramSpec]:
                     lambda left, op_char, right, indexes=indexes: "".join((left + op_char + right)[index] for index in indexes),
                 )
             )
-    programs = [ProgramSpec(name=name, complexity=complexity, fn=fn) for name, complexity, fn in base_sources]
-
-    output: List[ProgramSpec] = list(programs)
-    return output
+    return [ProgramSpec(name=name, complexity=complexity, fn=fn) for name, complexity, fn in base_sources]
 
 
 NUMERIC_PROGRAMS = _numeric_programs()

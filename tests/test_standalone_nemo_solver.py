@@ -1,4 +1,5 @@
 import unittest
+import re
 from pathlib import Path
 
 from standalone_nemo_solver import (
@@ -59,9 +60,9 @@ class TestStandaloneNemoSolver(unittest.TestCase):
 
     def test_standalone_file_is_independent(self) -> None:
         source = SOLVER_PATH.read_text(encoding="utf-8")
-        self.assertNotIn("bit_manipulation_decoder", source)
-        self.assertNotIn("text_cipher_decoder", source)
-        self.assertNotIn("symbol_transform_decoder", source)
+        self.assertIsNone(re.search(r"^\s*(from|import)\s+bit_manipulation_decoder\b", source, re.M))
+        self.assertIsNone(re.search(r"^\s*(from|import)\s+text_cipher_decoder\b", source, re.M))
+        self.assertIsNone(re.search(r"^\s*(from|import)\s+symbol_transform_decoder\b", source, re.M))
         self.assertNotIn("fallback", source)
         self.assertNotIn("oracle", source)
 

@@ -2,6 +2,12 @@ import unittest
 from pathlib import Path
 
 from standalone_nemo_solver import (
+    BitRow,
+    SymbolRow,
+    TextRow,
+    _solve_bit_local,
+    _solve_symbol_local,
+    _solve_text_local,
     build_solver,
     load_rows,
     parse_bit_row,
@@ -58,6 +64,47 @@ class TestStandaloneNemoSolver(unittest.TestCase):
         self.assertNotIn("symbol_transform_decoder", source)
         self.assertNotIn("fallback", source)
         self.assertNotIn("oracle", source)
+
+    def test_local_solvers_work_without_training_lookup(self) -> None:
+        bit_row = BitRow(
+            row_id="local-bit",
+            prompt="",
+            examples=[
+                (0b00000001, 0b00000010),
+                (0b00000101, 0b00001010),
+                (0b10000000, 0b00000001),
+            ],
+            query_input=0b01010101,
+            answer_output=0b10101010,
+        )
+        bit_prediction, bit_candidates = _solve_bit_local(bit_row)
+        self.assertEqual(bit_prediction, "10101010")
+        self.assertGreater(bit_candidates, 0)
+
+        vocab_freq = {"dragon": 1}
+        vocab_by_len = {6: ["dragon"]}
+        text_row = TextRow(
+            row_id="local-text",
+            prompt="",
+            examples=[("abcdef", "dragon")],
+            query_cipher="abcdef",
+            answer_plain="dragon",
+        )
+        text_prediction, text_candidates = _solve_text_local(text_row, vocab_by_len, vocab_freq)
+        self.assertEqual(text_prediction, "dragon")
+        self.assertGreater(text_candidates, 0)
+
+        symbol_row = SymbolRow(
+            row_id="local-symbol",
+            prompt="",
+            examples=[("ab+cd", "ab"), ("xy-zq", "xy")],
+            query_expr="mn*op",
+            answer_text="mn",
+            family="symbol_string",
+        )
+        symbol_prediction, symbol_candidates = _solve_symbol_local(symbol_row)
+        self.assertEqual(symbol_prediction, "mn")
+        self.assertGreater(symbol_candidates, 0)
 
     def test_full_train_exact_match(self) -> None:
         summary = self.solver.evaluate()

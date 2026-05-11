@@ -562,27 +562,6 @@ def _string_programs() -> List[ProgramSpec]:
             )
     programs = [ProgramSpec(name=name, complexity=complexity, fn=fn) for name, complexity, fn in base_sources]
 
-    def fit_translation(name: str, complexity: int, source_fn: Callable[[str, str, str], str], examples: Sequence[Tuple[str, str]]) -> Optional[ProgramSpec]:
-        mapping: Dict[str, str] = {}
-        for expr, expected in examples:
-            parsed = _parse_symbol_expr(expr)
-            if parsed is None:
-                return None
-            source = source_fn(*parsed)
-            if len(source) != len(expected):
-                return None
-            for source_ch, expected_ch in zip(source, expected):
-                if mapping.get(source_ch, expected_ch) != expected_ch:
-                    return None
-                mapping[source_ch] = expected_ch
-        return ProgramSpec(
-            name=f"{name}_mapped",
-            complexity=complexity + 2,
-            fn=lambda left, op_char, right, source_fn=source_fn, mapping=mapping: "".join(
-                mapping.get(ch, "") for ch in source_fn(left, op_char, right)
-            ),
-        )
-
     output: List[ProgramSpec] = list(programs)
     return output
 

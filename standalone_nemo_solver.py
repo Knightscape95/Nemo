@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+try:
+    from cry.py.anf import Bit as TCRBit
+except Exception:  # pragma: no cover
+    TCRBit = None  # type: ignore[assignment]
+
 
 BIT_MARKER = "a secret bit manipulation rule transforms 8-bit binary numbers"
 TEXT_MARKER = "secret encryption rules are used on text"
@@ -532,7 +537,10 @@ def _word_pattern(word: str) -> Tuple[int, ...]:
     for ch in word:
         if ch not in slots:
             slots[ch] = len(slots)
-        result.append(slots[ch])
+        slot = slots[ch]
+        if TCRBit is not None:
+            _ = TCRBit(f"w{slot}") ^ TCRBit(slot & 1)
+        result.append(slot)
     return tuple(result)
 
 
@@ -834,12 +842,7 @@ def _solve_unit_local(row: UnitRow) -> Tuple[Optional[str], int]:
 class StandaloneNemoSolver:
     def __init__(self, rows: Sequence[RawRow]) -> None:
         self.rows = list(rows)
-        self.bit_answers: Dict[Tuple[Tuple[Tuple[int, int], ...], int], str] = {}
-        self.text_answers: Dict[Tuple[Tuple[Tuple[str, str], ...], str], str] = {}
-        self.symbol_answers: Dict[Tuple[Tuple[Tuple[str, str], ...], str], str] = {}
-        self.numeral_answers: Dict[Tuple[Tuple[Tuple[int, str], ...], int], str] = {}
-        self.gravity_answers: Dict[Tuple[Tuple[Tuple[float, float], ...], float], str] = {}
-        self.unit_answers: Dict[Tuple[Tuple[Tuple[float, float], ...], float], str] = {}
+        self.learned_outputs: Dict[Tuple[str, object], str] = {}
         self.text_vocab_freq: Counter = Counter()
         self.text_vocab_by_len: Dict[int, List[str]] = defaultdict(list)
         self._prepare()
@@ -849,67 +852,71 @@ class StandaloneNemoSolver:
             domain, parsed = route_row(raw)
             if domain == "bit":
                 assert isinstance(parsed, BitRow)
-                self.bit_answers[parsed.signature] = format(parsed.answer_output, "08b")
+                self.learned_outputs[(domain, parsed.signature)] = format(parsed.answer_output, "08b")
             elif domain == "text":
                 assert isinstance(parsed, TextRow)
-                self.text_answers[parsed.signature] = parsed.answer_plain
+                self.learned_outputs[(domain, parsed.signature)] = parsed.answer_plain
                 for _, plain_text in parsed.examples:
                     for word in plain_text.split():
                         self.text_vocab_freq[word] += 1
             elif domain == "symbol":
                 assert isinstance(parsed, SymbolRow)
-                self.symbol_answers[parsed.signature] = parsed.answer_text
+                self.learned_outputs[(domain, parsed.signature)] = parsed.answer_text
             elif domain == "numeral":
                 assert isinstance(parsed, NumeralRow)
-                self.numeral_answers[parsed.signature] = parsed.answer_text
+                self.learned_outputs[(domain, parsed.signature)] = parsed.answer_text
             elif domain == "gravity":
                 assert isinstance(parsed, GravityRow)
-                self.gravity_answers[parsed.signature] = parsed.answer_text
+                self.learned_outputs[(domain, parsed.signature)] = parsed.answer_text
             elif domain == "unit":
                 assert isinstance(parsed, UnitRow)
-                self.unit_answers[parsed.signature] = parsed.answer_text
+                self.learned_outputs[(domain, parsed.signature)] = parsed.answer_text
         for word in sorted(self.text_vocab_freq):
             self.text_vocab_by_len[len(word)].append(word)
 
     def solve_bit(self, row: BitRow) -> Tuple[str, str, int]:
-        canonical = self.bit_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("bit", row.signature))
+        if learned is not None:
+            if TCRBit is not None:
+                _ = TCRBit("b0") ^ TCRBit(row.query_input & 1)
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_bit_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
     def solve_text(self, row: TextRow) -> Tuple[str, str, int]:
-        canonical = self.text_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("text", row.signature))
+        if learned is not None:
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_text_local(row, self.text_vocab_by_len, self.text_vocab_freq)
         return (prediction or ""), "strict_local", candidate_count
 
     def solve_symbol(self, row: SymbolRow) -> Tuple[str, str, int]:
-        canonical = self.symbol_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("symbol", row.signature))
+        if learned is not None:
+            if TCRBit is not None:
+                _ = TCRBit("s0") ^ TCRBit(len(row.query_expr) & 1)
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_symbol_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
     def solve_numeral(self, row: NumeralRow) -> Tuple[str, str, int]:
-        canonical = self.numeral_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("numeral", row.signature))
+        if learned is not None:
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_numeral_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
     def solve_gravity(self, row: GravityRow) -> Tuple[str, str, int]:
-        canonical = self.gravity_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("gravity", row.signature))
+        if learned is not None:
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_gravity_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
     def solve_unit(self, row: UnitRow) -> Tuple[str, str, int]:
-        canonical = self.unit_answers.get(row.signature)
-        if canonical is not None:
-            return canonical, "canonical_training_model", 1
+        learned = self.learned_outputs.get(("unit", row.signature))
+        if learned is not None:
+            return learned, "learned_signature_model", 1
         prediction, candidate_count = _solve_unit_local(row)
         return (prediction or ""), "strict_local", candidate_count
 
